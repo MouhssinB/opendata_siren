@@ -10,22 +10,24 @@ sys.path.insert(0, '/app')
 
 from src.config import ConfigLoader
 from src.monthly_collector import MonthlyInseeCollector
+from src.ign_monthly_collector import MonthlyIgnCollector
 from src.main import setup_logging, ensure_directories
 
 
 logger = logging.getLogger(__name__)
 
-# Variable globale pour tracker si on a déjà exécuté ce mois-ci
-last_execution_month = None
+# Variables globales pour tracker si on a déjà exécuté ce mois-ci
+last_execution_month_insee = None
+last_execution_month_ign = None
 
 
-def run_monthly_collection():
-    """Exécute la collecte mensuelle des données"""
-    global last_execution_month
+def run_monthly_insee_collection():
+    """Exécute la collecte mensuelle des données INSEE"""
+    global last_execution_month_insee
 
     try:
         logger.info("=" * 80)
-        logger.info(f"DÉBUT DE LA COLLECTE MENSUELLE PROGRAMMÉE - {datetime.now().isoformat()}")
+        logger.info(f"DÉBUT DE LA COLLECTE MENSUELLE INSEE - {datetime.now().isoformat()}")
         logger.info("=" * 80)
 
         # Charger la configuration
@@ -35,7 +37,7 @@ def run_monthly_collection():
         # Valider la configuration
         config.validate()
 
-        # Initialiser le collecteur mensuel
+        # Initialiser le collecteur mensuel INSEE
         collector = MonthlyInseeCollector(config)
 
         # Exécuter la collecte et l'upload
@@ -46,13 +48,81 @@ def run_monthly_collection():
 
         # Mettre à jour le dernier mois d'exécution
         now = datetime.now()
-        last_execution_month = (now.year, now.month)
+        last_execution_month_insee = (now.year, now.month)
 
         logger.info("=" * 80)
-        logger.info(f"FIN DE LA COLLECTE MENSUELLE - {datetime.now().isoformat()}")
+        logger.info(f"FIN DE LA COLLECTE MENSUELLE INSEE - {datetime.now().isoformat()}")
         logger.info("=" * 80)
 
         return stats
+
+    except Exception as e:
+        logger.error(f"Erreur lors de la collecte INSEE programmée: {e}")
+        logger.exception("Détails de l'erreur:")
+
+
+def run_monthly_ign_collection():
+    """Exécute la collecte mensuelle des données IGN"""
+    global last_execution_month_ign
+
+    try:
+        logger.info("=" * 80)
+        logger.info(f"DÉBUT DE LA COLLECTE MENSUELLE IGN - {datetime.now().isoformat()}")
+        logger.info("=" * 80)
+
+        # Charger la configuration
+        config_path = os.getenv('CONFIG_PATH', 'config.yaml')
+        config = ConfigLoader(config_path)
+
+        # Valider la configuration
+        config.validate()
+
+        # Initialiser le collecteur mensuel IGN
+        collector = MonthlyIgnCollector(config)
+
+        # Exécuter la collecte et l'upload
+        stats = collector.collect_and_upload()
+
+        # Nettoyage
+        collector.cleanup()
+
+        # Mettre à jour le dernier mois d'exécution
+        now = datetime.now()
+        last_execution_month_ign = (now.year, now.month)
+
+        logger.info("=" * 80)
+        logger.info(f"FIN DE LA COLLECTE MENSUELLE IGN - {datetime.now().isoformat()}")
+        logger.info("=" * 80)
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"Erreur lors de la collecte IGN programmée: {e}")
+        logger.exception("Détails de l'erreur:")
+
+
+def run_monthly_collection():
+    """Exécute la collecte mensuelle de toutes les sources de données (INSEE + IGN)"""
+    try:
+        logger.info("#" * 80)
+        logger.info(f"DÉBUT DE LA COLLECTE MENSUELLE COMPLÈTE - {datetime.now().isoformat()}")
+        logger.info("#" * 80)
+
+        all_stats = {}
+
+        # Exécuter la collecte INSEE
+        insee_stats = run_monthly_insee_collection()
+        all_stats['insee'] = insee_stats
+
+        # Exécuter la collecte IGN
+        ign_stats = run_monthly_ign_collection()
+        all_stats['ign'] = ign_stats
+
+        logger.info("#" * 80)
+        logger.info(f"FIN DE LA COLLECTE MENSUELLE COMPLÈTE - {datetime.now().isoformat()}")
+        logger.info("#" * 80)
+
+        return all_stats
 
     except Exception as e:
         logger.error(f"Erreur lors de la collecte programmée: {e}")
@@ -62,6 +132,7 @@ def run_monthly_collection():
 def should_run_monthly_collection(day_of_month: int = 2, hour: int = 2) -> bool:
     """
     Vérifie si la collecte mensuelle doit être exécutée
+    La collecte complète (INSEE + IGN) est exécutée ensemble
 
     Args:
         day_of_month: Jour du mois pour l'exécution (par défaut: 2)
@@ -70,13 +141,14 @@ def should_run_monthly_collection(day_of_month: int = 2, hour: int = 2) -> bool:
     Returns:
         True si la collecte doit être exécutée
     """
-    global last_execution_month
+    global last_execution_month_insee, last_execution_month_ign
 
     now = datetime.now()
     current_month_key = (now.year, now.month)
 
-    # Vérifier si on a déjà exécuté ce mois-ci
-    if last_execution_month == current_month_key:
+    # Vérifier si on a déjà exécuté ce mois-ci (on vérifie les deux sources)
+    # Si au moins une des deux a déjà été exécutée ce mois-ci, on ne relance pas
+    if last_execution_month_insee == current_month_key or last_execution_month_ign == current_month_key:
         return False
 
     # Vérifier si c'est le bon jour et la bonne heure
@@ -102,7 +174,7 @@ def check_and_run_monthly():
 
 def main():
     """Point d'entrée du scheduler"""
-    global last_execution_month
+    global last_execution_month_insee, last_execution_month_ign
 
     # Charger la configuration pour le logging
     config_path = os.getenv('CONFIG_PATH', 'config.yaml')
@@ -113,7 +185,7 @@ def main():
     ensure_directories(config)
 
     logger.info("=" * 80)
-    logger.info("DÉMARRAGE DU SCHEDULER MENSUEL INSEE")
+    logger.info("DÉMARRAGE DU SCHEDULER MENSUEL (INSEE + IGN)")
     logger.info("=" * 80)
 
     # Récupérer la configuration de planification

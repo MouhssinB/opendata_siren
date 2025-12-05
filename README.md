@@ -1,13 +1,14 @@
-# INSEE Data Collector - Téléchargement Mensuel
+# OpenData Collector - Téléchargement Mensuel INSEE & IGN
 
-Application Python pour télécharger automatiquement les fichiers INSEE depuis data.gouv.fr et les stocker dans Azure Blob Storage.
+Application Python pour télécharger automatiquement les fichiers INSEE depuis data.gouv.fr et les fichiers IGN depuis data.geopf.fr, et les stocker dans Azure Blob Storage.
 
 ## 📋 Fonctionnalités
 
-- ✅ Téléchargement automatique des fichiers depuis **data.gouv.fr**
+- ✅ **Téléchargement automatique des fichiers INSEE** depuis **data.gouv.fr**
+- ✅ **Téléchargement automatique des fichiers IGN** depuis **data.geopf.fr**
 - ✅ Exécution mensuelle programmée (le 2 de chaque mois par défaut)
 - ✅ Logique **"Annule et Remplace"** : suppression des anciens fichiers avant upload des nouveaux
-- ✅ Stockage automatique dans Azure Blob Storage
+- ✅ Stockage automatique dans Azure Blob Storage avec répertoires séparés (insee/ et IGN/)
 - ✅ Gestion des gros fichiers avec téléchargement en streaming
 - ✅ Exécution dans Docker
 - ✅ Scheduler intégré pour exécutions mensuelles automatiques
@@ -45,11 +46,17 @@ MONTHLY_DAY=2  # Jour du mois (1-31)
 MONTHLY_HOUR=2  # Heure (0-23)
 ```
 
-4. **Configurer le planning dans config.yaml (optionnel)**
+4. **Configurer les préfixes de stockage dans config.yaml (optionnel)**
 ```yaml
 execution:
   monthly_day: 2  # Le 2 de chaque mois
   monthly_hour: 2  # À 2h du matin
+
+azure:
+  blob_prefix: "insee/"  # Préfixe pour les fichiers INSEE
+
+ign:
+  blob_prefix: "IGN/"    # Préfixe pour les fichiers IGN
 ```
 
 ## 📖 Utilisation
@@ -153,18 +160,30 @@ Les variables d'environnement dans `.env` surchargent la configuration :
 
 ### Collecte mensuelle automatique
 
-L'application fonctionne selon le principe **"Annule et Remplace"** :
+L'application fonctionne selon le principe **"Annule et Remplace"** pour chaque source de données :
 
 1. **Le 2 de chaque mois à 2h** (configurable)
-2. **ÉTAPE 1** : Suppression de tous les fichiers existants dans Azure Storage
-3. **ÉTAPE 2** : Téléchargement de tous les fichiers disponibles depuis data.gouv.fr
-4. **ÉTAPE 3** : Upload des fichiers téléchargés vers Azure Storage
+2. **Collecte INSEE** :
+   - **ÉTAPE 1** : Suppression de tous les fichiers existants dans Azure Storage (préfixe insee/)
+   - **ÉTAPE 2** : Téléchargement de tous les fichiers disponibles depuis data.gouv.fr
+   - **ÉTAPE 3** : Upload des fichiers téléchargés vers Azure Storage
+3. **Collecte IGN** :
+   - **ÉTAPE 1** : Suppression de tous les fichiers existants dans Azure Storage (préfixe IGN/)
+   - **ÉTAPE 2** : Téléchargement de tous les fichiers disponibles depuis data.geopf.fr
+   - **ÉTAPE 3** : Upload des fichiers téléchargés vers Azure Storage
 
-### Source des données
+### Sources des données
 
+#### INSEE
 Les fichiers sont récupérés depuis le dataset officiel data.gouv.fr :
 - **Dataset** : "Base SIRENE des entreprises et de leurs établissements (SIREN, SIRET)"
 - **URL** : https://www.data.gouv.fr/fr/datasets/base-sirene-des-entreprises-et-de-leurs-etablissements-siren-siret/
+
+#### IGN
+Les fichiers sont récupérés depuis le service de téléchargement public de la Géoplateforme IGN :
+- **Service** : Public Download Service of Géoplateforme
+- **URL** : https://data.geopf.fr/telechargement/capabilities
+- **Ressources** : ADMIN-EXPRESS, ADMIN EXPRESS COG, BD TOPO, et bien d'autres (93 ressources au total)
 
 ## 📊 Structure des données Azure
 
@@ -176,9 +195,13 @@ container-name/
 │   ├── StockEtablissement_utf8.csv
 │   ├── StockUniteLegale_utf8.csv
 │   └── [autres fichiers INSEE...]
+├── IGN/
+│   ├── ADMIN-EXPRESS_*.7z
+│   ├── ADMIN-EXPRESS-COG_*.7z
+│   └── [autres fichiers IGN...]
 ```
 
-Tous les fichiers disponibles sur data.gouv.fr sont téléchargés et stockés dans le préfixe `insee/` (configurable).
+Tous les fichiers disponibles sont téléchargés et stockés dans des préfixes séparés (configurable).
 
 ## 📁 Structure du projet
 
@@ -186,32 +209,36 @@ Tous les fichiers disponibles sur data.gouv.fr sont téléchargés et stockés d
 opendata_siren/
 ├── src/
 │   ├── __init__.py
-│   ├── main.py              # Point d'entrée principal (legacy)
-│   ├── downloader.py        # Module de téléchargement depuis data.gouv.fr
-│   ├── monthly_collector.py # Collecteur mensuel principal
-│   ├── collector.py         # Ancien collecteur (legacy)
+│   ├── main.py                   # Point d'entrée principal (legacy)
+│   ├── downloader.py             # Module de téléchargement INSEE depuis data.gouv.fr
+│   ├── ign_downloader.py         # Module de téléchargement IGN depuis data.geopf.fr
+│   ├── monthly_collector.py      # Collecteur mensuel INSEE
+│   ├── ign_monthly_collector.py  # Collecteur mensuel IGN
+│   ├── collector.py              # Ancien collecteur (legacy)
 │   ├── api/
 │   │   ├── __init__.py
-│   │   └── siren_client.py  # Client API SIREN (legacy)
+│   │   └── siren_client.py       # Client API SIREN (legacy)
 │   ├── storage/
 │   │   ├── __init__.py
-│   │   └── azure_storage.py # Gestionnaire Azure Storage
+│   │   └── azure_storage.py      # Gestionnaire Azure Storage
 │   ├── config/
 │   │   ├── __init__.py
-│   │   └── config_loader.py # Chargeur de configuration
+│   │   └── config_loader.py      # Chargeur de configuration
 │   └── models/
 │       ├── __init__.py
-│       └── state.py         # Gestion de l'état (legacy)
-├── data/                    # Données locales (gitignored)
-│   └── temp/               # Fichiers temporaires de téléchargement
-├── logs/                    # Logs (gitignored)
-├── config.yaml              # Configuration principale
-├── .env.example             # Template des variables d'environnement
-├── requirements.txt         # Dépendances Python
-├── Dockerfile              # Image Docker
-├── docker-compose.yml      # Orchestration Docker
-├── scheduler.py            # Scheduler pour exécutions mensuelles
-└── README.md              # Cette documentation
+│       └── state.py              # Gestion de l'état (legacy)
+├── data/                         # Données locales (gitignored)
+│   └── temp/                     # Fichiers temporaires de téléchargement
+│       ├── insee/                # Fichiers temporaires INSEE
+│       └── ign/                  # Fichiers temporaires IGN
+├── logs/                         # Logs (gitignored)
+├── config.yaml                   # Configuration principale
+├── .env.example                  # Template des variables d'environnement
+├── requirements.txt              # Dépendances Python
+├── Dockerfile                    # Image Docker
+├── docker-compose.yml            # Orchestration Docker
+├── scheduler.py                  # Scheduler pour exécutions mensuelles (INSEE + IGN)
+└── README.md                     # Cette documentation
 ```
 
 ## 🔍 Monitoring et logs
@@ -230,11 +257,12 @@ tail -f logs/siren_collector.log
 ### Informations de suivi
 
 Les logs contiennent des informations détaillées sur :
-- Date et heure de chaque exécution
-- Nombre de fichiers supprimés (annule et remplace)
-- Nombre de fichiers téléchargés
-- Nombre de fichiers uploadés vers Azure
+- Date et heure de chaque exécution (INSEE et IGN)
+- Nombre de fichiers supprimés pour chaque source (annule et remplace)
+- Nombre de fichiers téléchargés pour chaque source
+- Nombre de fichiers uploadés vers Azure pour chaque source
 - Progression du téléchargement des gros fichiers
+- Liste des ressources IGN récupérées
 - Erreurs éventuelles
 - Durée totale de l'exécution
 
@@ -272,10 +300,18 @@ Le téléchargement peut prendre plusieurs heures selon votre connexion
 
 ## 📚 Ressources
 
+### INSEE
 - [Dataset data.gouv.fr - Base SIRENE](https://www.data.gouv.fr/fr/datasets/base-sirene-des-entreprises-et-de-leurs-etablissements-siren-siret/)
 - [Documentation SIRENE](https://www.sirene.fr/sirene/public/accueil)
-- [Azure Blob Storage Python SDK](https://docs.microsoft.com/python/api/azure-storage-blob/)
 - [API data.gouv.fr](https://www.data.gouv.fr/fr/apidoc/)
+
+### IGN
+- [Service de téléchargement IGN Géoplateforme](https://data.geopf.fr/telechargement/capabilities)
+- [Documentation IGN](https://geoservices.ign.fr/)
+- [Conditions Générales d'Utilisation IGN](https://geoservices.ign.fr/cgu-licences)
+
+### Azure
+- [Azure Blob Storage Python SDK](https://docs.microsoft.com/python/api/azure-storage-blob/)
 
 ## 📄 Licence
 
