@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  siren-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: siren-collector
+
+    # Variables d'environnement (à surcharger avec .env)
+    environment:
+      - API_CONSUMER_KEY=${API_CONSUMER_KEY}
+      - API_CONSUMER_SECRET=${API_CONSUMER_SECRET}
+      - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
+      - AZURE_STORAGE_ACCOUNT_KEY=${AZURE_STORAGE_ACCOUNT_KEY}
+      - AZURE_CONTAINER_NAME=${AZURE_CONTAINER_NAME:-siren-data}
+      - EXECUTION_MODE=${EXECUTION_MODE:-full}
+
+    # Volumes pour la persistance des données
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+
+    # Redémarrage automatique
+    restart: unless-stopped
+
+    # Commande par défaut
+    # Pour changer le mode, utilisez: docker-compose run siren-collector --mode delta
+    command: ["--config", "config.yaml"]
+
+  # Service optionnel avec scheduler (cron)
+  siren-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: siren-scheduler
+
+    environment:
+      - API_CONSUMER_KEY=${API_CONSUMER_KEY}
+      - API_CONSUMER_SECRET=${API_CONSUMER_SECRET}
+      - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
+      - AZURE_STORAGE_ACCOUNT_KEY=${AZURE_STORAGE_ACCOUNT_KEY}
+      - AZURE_CONTAINER_NAME=${AZURE_CONTAINER_NAME:-siren-data}
+      - EXECUTION_MODE=${EXECUTION_MODE:-delta}
+      - CRON_SCHEDULE=${CRON_SCHEDULE:-0 2 * * 1}  # Lundi 2h par défaut
+
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+      - ./scheduler.py:/app/scheduler.py:ro
+
+    restart: unless-stopped
+
+    # Utiliser le scheduler au lieu de l'exécution unique
+    command: ["python", "scheduler.py"]
+
+    # Désactiver par défaut (décommenter pour activer)
+    profiles:
+      - scheduler

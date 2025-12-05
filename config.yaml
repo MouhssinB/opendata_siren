@@ -1,0 +1,51 @@
+# Configuration pour l'application SIREN
+api:
+  base_url: "https://api.insee.fr/entreprises/sirene/V3"
+  # Obtenez votre clé API sur https://api.insee.fr/
+  consumer_key: "YOUR_CONSUMER_KEY"
+  consumer_secret: "YOUR_CONSUMER_SECRET"
+  timeout: 30
+  max_retries: 3
+  rate_limit_delay: 1  # Délai entre les appels en secondes
+
+# Mode d'exécution
+execution:
+  mode: "full"  # "full" ou "delta"
+  schedule_cron: "0 2 * * 1"  # Tous les lundis à 2h du matin
+
+# Départements à traiter (liste des codes département)
+# Exemples: ["75", "92", "93", "94"] ou ["01", "02", ...] ou "all" pour tous
+departments:
+  - "75"  # Paris
+  - "92"  # Hauts-de-Seine
+  - "93"  # Seine-Saint-Denis
+  - "94"  # Val-de-Marne
+  # Ajoutez d'autres départements selon vos besoins
+  # Ou utilisez "all" pour tous les départements
+
+# Configuration Azure Storage
+azure:
+  storage_account_name: "YOUR_STORAGE_ACCOUNT"
+  storage_account_key: "YOUR_STORAGE_ACCOUNT_KEY"
+  container_name: "siren-data"
+  connection_string: ""  # Optionnel: connection string complète
+
+# Répertoires locaux
+directories:
+  data_dir: "./data"
+  logs_dir: "./logs"
+  temp_dir: "./data/temp"
+  state_file: "./data/state.json"
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_max_bytes: 10485760  # 10MB
+  file_backup_count: 5
+
+# Paramètres de traitement
+processing:
+  batch_size: 1000  # Nombre d'entreprises par batch
+  max_workers: 4  # Nombre de threads parallèles
+  delta_days: 7  # Nombre de jours pour le mode delta

@@ -1,0 +1,19 @@
+# Dépendances de l'application SIREN Collector
+
+# API et requêtes HTTP
+requests==2.31.0
+urllib3==2.1.0
+
+# Azure Storage
+azure-storage-blob==12.19.0
+azure-core==1.29.5
+
+# Configuration
+pyyaml==6.0.1
+python-dotenv==1.0.0
+
+# Logging et monitoring
+python-json-logger==2.0.7
+
+# Scheduling (optionnel pour cron dans Python)
+schedule==1.2.0
