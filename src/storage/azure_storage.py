@@ -193,6 +193,48 @@ class AzureStorageHandler:
             logger.error(f"Erreur lors de la suppression de {blob_path}: {e}")
             return False
 
+    def delete_all_blobs(self, prefix: str = "") -> int:
+        """
+        Supprime tous les blobs avec un préfixe donné (logique annule et remplace)
+
+        Args:
+            prefix: Préfixe pour filtrer les blobs à supprimer
+
+        Returns:
+            Nombre de blobs supprimés
+        """
+        try:
+            logger.info(f"Suppression de tous les blobs avec le préfixe '{prefix}'...")
+
+            # Lister tous les blobs avec ce préfixe
+            blob_names = self.list_blobs(prefix=prefix)
+
+            if not blob_names:
+                logger.info(f"Aucun blob à supprimer avec le préfixe '{prefix}'")
+                return 0
+
+            logger.info(f"{len(blob_names)} blobs à supprimer")
+
+            deleted_count = 0
+            errors = []
+
+            for blob_name in blob_names:
+                try:
+                    if self.delete_blob(blob_name):
+                        deleted_count += 1
+                except Exception as e:
+                    errors.append(f"Erreur lors de la suppression de {blob_name}: {e}")
+
+            if errors:
+                logger.warning(f"Erreurs lors de la suppression:\n" + "\n".join(errors))
+
+            logger.info(f"{deleted_count}/{len(blob_names)} blobs supprimés avec succès")
+            return deleted_count
+
+        except AzureError as e:
+            logger.error(f"Erreur lors de la suppression des blobs: {e}")
+            return 0
+
     def blob_exists(self, blob_path: str) -> bool:
         """
         Vérifie si un blob existe

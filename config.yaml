@@ -1,27 +1,11 @@
-# Configuration pour l'application SIREN
-api:
-  base_url: "https://api.insee.fr/entreprises/sirene/V3"
-  # Obtenez votre clé API sur https://api.insee.fr/
-  consumer_key: "YOUR_CONSUMER_KEY"
-  consumer_secret: "YOUR_CONSUMER_SECRET"
-  timeout: 30
-  max_retries: 3
-  rate_limit_delay: 1  # Délai entre les appels en secondes
+# Configuration pour l'application SIREN - Téléchargement mensuel depuis data.gouv.fr
+# L'application télécharge les fichiers INSEE depuis data.gouv.fr et les stocke dans Azure Storage
+# Exécution mensuelle avec logique "annule et remplace"
 
-# Mode d'exécution
+# Planification mensuelle
 execution:
-  mode: "full"  # "full" ou "delta"
-  schedule_cron: "0 2 * * 1"  # Tous les lundis à 2h du matin
-
-# Départements à traiter (liste des codes département)
-# Exemples: ["75", "92", "93", "94"] ou ["01", "02", ...] ou "all" pour tous
-departments:
-  - "75"  # Paris
-  - "92"  # Hauts-de-Seine
-  - "93"  # Seine-Saint-Denis
-  - "94"  # Val-de-Marne
-  # Ajoutez d'autres départements selon vos besoins
-  # Ou utilisez "all" pour tous les départements
+  monthly_day: 2  # Jour du mois (1-31)
+  monthly_hour: 2  # Heure de la journée (0-23)
 
 # Configuration Azure Storage
 azure:
@@ -29,6 +13,7 @@ azure:
   storage_account_key: "YOUR_STORAGE_ACCOUNT_KEY"
   container_name: "siren-data"
   connection_string: ""  # Optionnel: connection string complète
+  blob_prefix: "insee/"  # Préfixe pour les fichiers dans le container
 
 # Répertoires locaux
 directories:
@@ -46,6 +31,4 @@ logging:
 
 # Paramètres de traitement
 processing:
-  batch_size: 1000  # Nombre d'entreprises par batch
-  max_workers: 4  # Nombre de threads parallèles
-  delta_days: 7  # Nombre de jours pour le mode delta
+  download_timeout: 120  # Timeout pour le téléchargement des fichiers (en secondes)

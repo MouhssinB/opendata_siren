@@ -3,25 +3,29 @@ import os
 import sys
 import time
 import logging
-import schedule
 from datetime import datetime
 
 # Ajouter le répertoire parent au path
 sys.path.insert(0, '/app')
 
 from src.config import ConfigLoader
-from src.collector import SirenCollector
+from src.monthly_collector import MonthlyInseeCollector
 from src.main import setup_logging, ensure_directories
 
 
 logger = logging.getLogger(__name__)
 
+# Variable globale pour tracker si on a déjà exécuté ce mois-ci
+last_execution_month = None
 
-def run_collection():
-    """Exécute la collecte des données"""
+
+def run_monthly_collection():
+    """Exécute la collecte mensuelle des données"""
+    global last_execution_month
+
     try:
         logger.info("=" * 80)
-        logger.info(f"DÉBUT DE LA COLLECTE PROGRAMMÉE - {datetime.now().isoformat()}")
+        logger.info(f"DÉBUT DE LA COLLECTE MENSUELLE PROGRAMMÉE - {datetime.now().isoformat()}")
         logger.info("=" * 80)
 
         # Charger la configuration
@@ -31,56 +35,75 @@ def run_collection():
         # Valider la configuration
         config.validate()
 
-        # Initialiser le collecteur
-        collector = SirenCollector(config)
+        # Initialiser le collecteur mensuel
+        collector = MonthlyInseeCollector(config)
 
-        # Déterminer le mode (delta pour les exécutions planifiées)
-        mode = os.getenv('EXECUTION_MODE', 'delta')
-
-        # Vérifier si c'est la première exécution
-        if collector.state_manager.is_first_execution():
-            logger.info("Première exécution détectée - passage en mode FULL")
-            mode = 'full'
-
-        logger.info(f"Mode d'exécution: {mode}")
-
-        # Collecter les données SIRET
-        logger.info("Collecte des données SIRET")
-        results_siret = collector.collect_all_departments(
-            mode=mode,
-            data_type='siret',
-            parallel=True
-        )
-
-        # Afficher les résultats
-        success_count = sum(1 for r in results_siret.values() if r['success'])
-        total_records = sum(r.get('records_count', 0) for r in results_siret.values() if r['success'])
-
-        logger.info("=" * 80)
-        logger.info("RÉSULTATS DE LA COLLECTE")
-        logger.info("=" * 80)
-        logger.info(f"Départements traités avec succès: {success_count}/{len(results_siret)}")
-        logger.info(f"Total d'enregistrements SIRET: {total_records}")
-
-        # Statistiques
-        stats = collector.get_statistics()
-        logger.info(f"Total d'exécutions (historique): {stats.get('total_executions', 0)}")
-        logger.info(f"Total d'enregistrements (historique): {stats.get('total_records_fetched', 0)}")
+        # Exécuter la collecte et l'upload
+        stats = collector.collect_and_upload()
 
         # Nettoyage
         collector.cleanup()
 
+        # Mettre à jour le dernier mois d'exécution
+        now = datetime.now()
+        last_execution_month = (now.year, now.month)
+
         logger.info("=" * 80)
-        logger.info(f"FIN DE LA COLLECTE - {datetime.now().isoformat()}")
+        logger.info(f"FIN DE LA COLLECTE MENSUELLE - {datetime.now().isoformat()}")
         logger.info("=" * 80)
+
+        return stats
 
     except Exception as e:
         logger.error(f"Erreur lors de la collecte programmée: {e}")
         logger.exception("Détails de l'erreur:")
 
 
+def should_run_monthly_collection(day_of_month: int = 2, hour: int = 2) -> bool:
+    """
+    Vérifie si la collecte mensuelle doit être exécutée
+
+    Args:
+        day_of_month: Jour du mois pour l'exécution (par défaut: 2)
+        hour: Heure de la journée pour l'exécution (par défaut: 2h)
+
+    Returns:
+        True si la collecte doit être exécutée
+    """
+    global last_execution_month
+
+    now = datetime.now()
+    current_month_key = (now.year, now.month)
+
+    # Vérifier si on a déjà exécuté ce mois-ci
+    if last_execution_month == current_month_key:
+        return False
+
+    # Vérifier si c'est le bon jour et la bonne heure
+    if now.day == day_of_month and now.hour == hour:
+        return True
+
+    return False
+
+
+def check_and_run_monthly():
+    """Vérifie et exécute la collecte mensuelle si nécessaire"""
+    day_of_month = int(os.getenv('MONTHLY_DAY', '2'))
+    hour = int(os.getenv('MONTHLY_HOUR', '2'))
+
+    if should_run_monthly_collection(day_of_month, hour):
+        logger.info(f"Déclenchement de la collecte mensuelle (jour {day_of_month} du mois à {hour}h)")
+        run_monthly_collection()
+    else:
+        now = datetime.now()
+        logger.debug(f"Vérification: aujourd'hui={now.day}, heure={now.hour}, "
+                    f"cible=jour {day_of_month} à {hour}h")
+
+
 def main():
     """Point d'entrée du scheduler"""
+    global last_execution_month
+
     # Charger la configuration pour le logging
     config_path = os.getenv('CONFIG_PATH', 'config.yaml')
     config = ConfigLoader(config_path)
@@ -90,64 +113,29 @@ def main():
     ensure_directories(config)
 
     logger.info("=" * 80)
-    logger.info("DÉMARRAGE DU SCHEDULER SIREN")
+    logger.info("DÉMARRAGE DU SCHEDULER MENSUEL INSEE")
     logger.info("=" * 80)
 
-    # Récupérer le planning depuis la config ou l'environnement
-    cron_schedule = os.getenv('CRON_SCHEDULE')
-    if not cron_schedule:
-        cron_schedule = config.get('execution.schedule_cron', '0 2 * * 1')
+    # Récupérer la configuration de planification
+    day_of_month = int(os.getenv('MONTHLY_DAY', config.get('execution.monthly_day', 2)))
+    hour = int(os.getenv('MONTHLY_HOUR', config.get('execution.monthly_hour', 2)))
 
-    logger.info(f"Planning configuré: {cron_schedule}")
-
-    # Parser le cron schedule (format: minute heure jour_du_mois mois jour_de_la_semaine)
-    # Pour simplifier, on va supporter quelques formats courants
-    parts = cron_schedule.split()
-
-    if len(parts) >= 5:
-        minute, hour, day_of_month, month, day_of_week = parts[:5]
-
-        # Convertir le jour de la semaine (0=Dimanche en cron, 0=Lundi en schedule)
-        weekdays = {
-            '0': 'sunday', '1': 'monday', '2': 'tuesday', '3': 'wednesday',
-            '4': 'thursday', '5': 'friday', '6': 'saturday', '7': 'sunday'
-        }
-
-        # Planifier l'exécution
-        time_str = f"{hour.zfill(2)}:{minute.zfill(2)}"
-
-        if day_of_week != '*':
-            # Exécution hebdomadaire
-            weekday = weekdays.get(day_of_week, 'monday')
-            schedule.every().week.at(time_str).do(run_collection)
-            logger.info(f"Planifié: chaque {weekday} à {time_str}")
-        elif day_of_month != '*':
-            # Exécution mensuelle (non supporté directement par schedule)
-            logger.warning("Planification mensuelle non supportée, utilisation hebdomadaire")
-            schedule.every().monday.at(time_str).do(run_collection)
-        else:
-            # Exécution quotidienne
-            schedule.every().day.at(time_str).do(run_collection)
-            logger.info(f"Planifié: chaque jour à {time_str}")
-
-    else:
-        # Par défaut: tous les lundis à 2h
-        schedule.every().monday.at("02:00").do(run_collection)
-        logger.info("Planifié (par défaut): chaque lundi à 02:00")
+    logger.info(f"Planning configuré: le {day_of_month} de chaque mois à {hour}h00")
 
     # Optionnel: exécuter immédiatement au démarrage
     run_on_startup = os.getenv('RUN_ON_STARTUP', 'false').lower() == 'true'
     if run_on_startup:
         logger.info("Exécution immédiate au démarrage...")
-        run_collection()
+        run_monthly_collection()
 
-    logger.info("Scheduler démarré. En attente de la prochaine exécution...")
+    logger.info("Scheduler démarré. Vérification toutes les heures...")
 
-    # Boucle principale
+    # Boucle principale - vérifier toutes les heures
     try:
         while True:
-            schedule.run_pending()
-            time.sleep(60)  # Vérifier chaque minute
+            check_and_run_monthly()
+            # Attendre 1 heure avant la prochaine vérification
+            time.sleep(3600)
 
     except KeyboardInterrupt:
         logger.info("Arrêt du scheduler demandé")
