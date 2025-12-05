@@ -38,25 +38,33 @@ class ConfigLoader:
 
     def _override_with_env(self):
         """Override la configuration avec les variables d'environnement"""
-        # API
-        if os.getenv('API_CONSUMER_KEY'):
-            self.config['api']['consumer_key'] = os.getenv('API_CONSUMER_KEY')
-        if os.getenv('API_CONSUMER_SECRET'):
-            self.config['api']['consumer_secret'] = os.getenv('API_CONSUMER_SECRET')
-
         # Azure
         if os.getenv('AZURE_STORAGE_ACCOUNT_NAME'):
+            if 'azure' not in self.config:
+                self.config['azure'] = {}
             self.config['azure']['storage_account_name'] = os.getenv('AZURE_STORAGE_ACCOUNT_NAME')
         if os.getenv('AZURE_STORAGE_ACCOUNT_KEY'):
+            if 'azure' not in self.config:
+                self.config['azure'] = {}
             self.config['azure']['storage_account_key'] = os.getenv('AZURE_STORAGE_ACCOUNT_KEY')
         if os.getenv('AZURE_CONTAINER_NAME'):
+            if 'azure' not in self.config:
+                self.config['azure'] = {}
             self.config['azure']['container_name'] = os.getenv('AZURE_CONTAINER_NAME')
         if os.getenv('AZURE_CONNECTION_STRING'):
+            if 'azure' not in self.config:
+                self.config['azure'] = {}
             self.config['azure']['connection_string'] = os.getenv('AZURE_CONNECTION_STRING')
 
-        # Execution mode
-        if os.getenv('EXECUTION_MODE'):
-            self.config['execution']['mode'] = os.getenv('EXECUTION_MODE')
+        # Planification mensuelle
+        if os.getenv('MONTHLY_DAY'):
+            if 'execution' not in self.config:
+                self.config['execution'] = {}
+            self.config['execution']['monthly_day'] = int(os.getenv('MONTHLY_DAY'))
+        if os.getenv('MONTHLY_HOUR'):
+            if 'execution' not in self.config:
+                self.config['execution'] = {}
+            self.config['execution']['monthly_hour'] = int(os.getenv('MONTHLY_HOUR'))
 
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -114,16 +122,6 @@ class ConfigLoader:
         Raises:
             ValueError: Si la configuration est invalide
         """
-        # Vérifier les clés API
-        api_key = self.config.get('api', {}).get('consumer_key')
-        api_secret = self.config.get('api', {}).get('consumer_secret')
-
-        if not api_key or api_key == 'YOUR_CONSUMER_KEY':
-            raise ValueError("API consumer_key non configurée")
-
-        if not api_secret or api_secret == 'YOUR_CONSUMER_SECRET':
-            raise ValueError("API consumer_secret non configurée")
-
         # Vérifier Azure
         storage_account = self.config.get('azure', {}).get('storage_account_name')
         storage_key = self.config.get('azure', {}).get('storage_account_key')
@@ -136,9 +134,13 @@ class ConfigLoader:
             if not storage_key or storage_key == 'YOUR_STORAGE_ACCOUNT_KEY':
                 raise ValueError("Azure storage_account_key non configuré")
 
-        # Vérifier le mode
-        mode = self.get_execution_mode()
-        if mode not in ['full', 'delta']:
-            raise ValueError(f"Mode d'exécution invalide: {mode}. Doit être 'full' ou 'delta'")
+        # Vérifier la planification mensuelle
+        monthly_day = self.config.get('execution', {}).get('monthly_day', 2)
+        if not isinstance(monthly_day, int) or monthly_day < 1 or monthly_day > 31:
+            raise ValueError(f"monthly_day invalide: {monthly_day}. Doit être entre 1 et 31")
+
+        monthly_hour = self.config.get('execution', {}).get('monthly_hour', 2)
+        if not isinstance(monthly_hour, int) or monthly_hour < 0 or monthly_hour > 23:
+            raise ValueError(f"monthly_hour invalide: {monthly_hour}. Doit être entre 0 et 23")
 
         return True
