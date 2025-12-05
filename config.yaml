@@ -1,5 +1,6 @@
-# Configuration pour l'application SIREN - Téléchargement mensuel depuis data.gouv.fr
-# L'application télécharge les fichiers INSEE depuis data.gouv.fr et les stocke dans Azure Storage
+# Configuration pour l'application SIREN - Téléchargement mensuel depuis data.gouv.fr et IGN
+# L'application télécharge les fichiers INSEE depuis data.gouv.fr et les fichiers IGN depuis data.geopf.fr
+# Les fichiers sont stockés dans Azure Storage
 # Exécution mensuelle avec logique "annule et remplace"
 
 # Planification mensuelle
@@ -13,7 +14,11 @@ azure:
   storage_account_key: "YOUR_STORAGE_ACCOUNT_KEY"
   container_name: "siren-data"
   connection_string: ""  # Optionnel: connection string complète
-  blob_prefix: "insee/"  # Préfixe pour les fichiers dans le container
+  blob_prefix: "insee/"  # Préfixe pour les fichiers INSEE dans le container
+
+# Configuration IGN
+ign:
+  blob_prefix: "IGN/"  # Préfixe pour les fichiers IGN dans le container
 
 # Répertoires locaux
 directories:
